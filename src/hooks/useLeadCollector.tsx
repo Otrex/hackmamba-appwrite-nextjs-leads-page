@@ -1,4 +1,5 @@
 import { useState } from "react";
+import querystring from "querystring";
 import { Client, Functions, Models } from "appwrite";
 
 export enum RequestState {
@@ -24,8 +25,21 @@ export default function () {
   };
 
   const collectLeads = () => {
+    setRequest({
+      ...request,
+      state: RequestState.LOADING,
+    });
     const client = new Client();
     const functions = new Functions(client);
+
+    const throwErrorIfNot200 = (response: Models.Execution) => {
+      const errorMsg = response.responseHeaders.find(
+        (e) => e.name === "location"
+      );
+
+      const message = new URL(errorMsg?.value || "").searchParams.get("code");
+      throw new Error(message || "something went wrong");
+    };
 
     client
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_BASE_URL!)
@@ -33,14 +47,22 @@ export default function () {
 
     const promise = functions.createExecution(
       process.env.NEXT_PUBLIC_APPWRITE_FUNCTION_ID!,
-      JSON.stringify({ ...form }),
+      querystring.encode(form),
       false,
       "/",
-      "POST"
+      "POST",
+      {
+        referer: "http://localhost:3000",
+        "content-type": "application/x-www-form-urlencoded",
+      }
     );
 
     promise
       .then(function (response) {
+        if (response.responseStatusCode != 200) {
+          throwErrorIfNot200(response);
+        }
+
         setRequest({
           ...request,
           response,
